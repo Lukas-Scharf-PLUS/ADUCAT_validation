@@ -1,1 +1,6 @@
 **/token.jwt
+
+# Python
+__pycache__/
+*.egg-info/
+.ipynb_checkpoints/
