@@ -4,3 +4,19 @@
 __pycache__/
 *.egg-info/
 .ipynb_checkpoints/
+
+# Editor / tool settings
+.idea
+.vscode
+.claude
+.mcp.json
+
+# Shell and git config files that ended up in the repo folder
+.bash_profile
+.bashrc
+.profile
+.zprofile
+.zshrc
+.gitconfig
+.ripgreprc
+.gitmodules
