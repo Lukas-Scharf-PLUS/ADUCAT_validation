@@ -128,6 +128,47 @@ time-series pattern, lon/lat columns or WKB), never where they are: the file is 
 To add a source, write such a function in `readers.py` and add it to `SOURCES`. **SNAP-StaMPS** is registered but
 raises `NotImplementedError` until its output format is fixed.
 
+#### Which columns are read
+
+Only the columns a notebook needs are read from disk (parquet stores every column separately):
+
+| Function | Reads | You choose |
+|---|---|---|
+| `read_points(src, polygon, extras=[...])` | lon/lat (or the WKB geometry), the velocity column, the coherence column, and the `extras` | the velocity column (`velocity=` in the notebook's `DATASETS`) and the `extras` |
+| `read_timeseries(src, pts, start, end)` | only the time-series columns between `start` and `end`, and only the row groups that contain the points in `pts` | the period and the points |
+
+All other columns of the file are not read. To see what a file contains, use
+`readers.attribute_columns(src)` (all columns except the time series) or `readers.file_overview(src)`.
+
+```python
+src = readers.egms(DATA_DIR / "EGMS/vienna/EGMS_L2A_073_2020_2024.parquet", velocity="VEL_20200101_20241231")
+pts = readers.read_points(src, aoi_polygon, extras=["los_east", "los_north", "los_up", "height_ortho"])
+ts = readers.read_timeseries(src, pts, start="2022-01-01", end="2024-12-31")
+```
+
+#### When the columns of a source file change
+
+The column names of a source are written in one place: its source function in `src/aducat_val/readers.py`
+(e.g. `egms()`). What to do depends on the change:
+
+| Change in the file | What to do |
+|---|---|
+| **Additional column** (e.g. a new attribute) | Nothing. It is ignored until a notebook asks for it with `extras=["new_column"]`. |
+| **New velocity column** (e.g. `VEL_20230101_20241231`) | Nothing in `readers.py`. Select it in the notebook: `dict(file=..., velocity="VEL_20230101_20241231")`. |
+| **Velocity or coherence column renamed** | Change the default `velocity=` or the coherence name in the source function (e.g. `"temporal_coherence"` in `egms()`). One change, all notebooks follow. |
+| **Time-series columns renamed** (e.g. `20200106` → `D20200106`) | Change `ts_pattern` in the source function. The part in brackets must capture the date `YYYYMMDD`. |
+| **lon/lat columns added** (e.g. to EGMS) | Set `lonlat=("lon", "lat")` in the source function. Reading gets faster, because the WKB geometry no longer has to be decoded. |
+| **Column used as `extras` renamed or removed** | Change the name in the notebook that asks for it. |
+| **New source** (e.g. SNAP-StaMPS output) | Write a source function and add it to `SOURCES` (see above). |
+
+If a name does not match the file, `read_points` / `read_timeseries` stop with an error that names the source, the
+file, the missing column and the columns the file actually has. Then you know which of the rows above applies.
+
+Only the source function needs to change, never the notebooks, as long as the meaning of the core columns stays the
+same (`velocity` in mm/yr LOS, time series in mm, see `docs/conventions.md`). If a provider changes the meaning, for
+example metres instead of millimetres or the opposite sign, convert it in the source's preparation step
+(`notebooks/ref_InSAR/` or the pipeline's post-processing), not in the notebooks.
+
 ### Metrics
 
 There is **one** `metrics.py` for all tiers, sorted by what is compared rather than by tier. InSAR vs InSAR and

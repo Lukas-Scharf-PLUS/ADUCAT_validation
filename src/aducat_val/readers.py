@@ -208,6 +208,23 @@ def read_metadata(src: Source) -> dict | None:
     return json.loads(meta.read_text()) if meta.exists() else None
 
 
+def check_columns(src: Source, pf: pq.ParquetFile, columns) -> None:
+    """Raise a KeyError that says which columns are missing in the file of ``src`` and how to fix it.
+
+    Without this check pyarrow only reports the first missing name, without the source or the file.
+    """
+    available = pf.schema_arrow.names
+    missing = [c for c in columns if c not in available]
+    if not missing:
+        return
+    raise KeyError(
+        f"{src.name}: column(s) {missing} not found in {src.file.name}. "
+        f"Columns in the file (time series left out): {attribute_columns(src)}. "
+        f"Velocity / coherence / lon-lat names are set in the source function in readers.py "
+        f"(or per notebook with velocity=...); extras are set in the notebook. "
+        f"See README, 'When the columns of a source file change'.")
+
+
 # ------------------------------------------------------------------------------------------ reading
 def read_points(src: Source, polygon=None, extras=(), min_coherence: float = 0.0,
                 metric_crs: str = METRIC_CRS) -> pd.DataFrame:
@@ -223,6 +240,7 @@ def read_points(src: Source, polygon=None, extras=(), min_coherence: float = 0.0
     extras = [c for c in extras if c not in (src.velocity, src.coherence)]
     value_cols = list(dict.fromkeys([src.velocity, src.coherence, *extras]))
     coord_cols = list(src.lonlat) if src.lonlat else ["geometry"]
+    check_columns(src, pf, coord_cols + value_cols)
 
     to_lonlat = None
     if not src.lonlat:
@@ -276,6 +294,11 @@ def read_timeseries(src: Source, pts: pd.DataFrame, start=None, end=None) -> pd.
     """
     pf = pq.ParquetFile(src.file)
     cols = ts_columns(pf.schema_arrow.names, src.ts_pattern, start, end)
+    if not cols:
+        raise ValueError(
+            f"{src.name}: no time-series column in {src.file.name} matches the pattern {src.ts_pattern!r}"
+            f" between {start} and {end}. If the column names changed, update ts_pattern in the source function "
+            f"in readers.py (see README, 'When the columns of a source file change').")
     if len(pts) == 0:
         return pd.DataFrame(columns=pd.DatetimeIndex(sorted(cols.values())), dtype=float)
 
